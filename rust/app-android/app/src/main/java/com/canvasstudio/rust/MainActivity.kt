@@ -196,6 +196,15 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     fun setFullResolution(on: Boolean) { onMain { surface.maxSide = if (on) 0 else BoardSurface.MAX_SIDE } }
     fun finishApp() { onMain { finish() } }
 
+    /** Opens a web page (Google sign-in, links) in the browser. */
+    fun openUrl(url: String) { onMain {
+        try {
+            startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+        } catch (e: Exception) {
+            RustApp.toast(handle, "No browser is installed. Use a code to sign in instead.")
+        }
+    } }
+
     fun copyText(text: String) { onMain {
         val clip = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
         clip.setPrimaryClip(android.content.ClipData.newPlainText("Inkboard", text))

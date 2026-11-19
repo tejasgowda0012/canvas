@@ -14,6 +14,8 @@ use std::time::Duration;
 struct AndroidUi {
     vm: JavaVM,
     host: GlobalRef,
+    /// The app thread's events, for answers that arrive from other threads.
+    events: Sender<Event>,
 }
 impl AndroidUi {
     fn call(&self, name: &str, sig: &str, args: &[JValue]) {
@@ -108,6 +110,26 @@ impl Platform for AndroidUi {
     fn copy_text(&mut self, text: &str) {
         self.text_call("copyText", "(Ljava/lang/String;)V", text, false, false);
     }
+    fn open_url(&mut self, url: &str) {
+        self.text_call("openUrl", "(Ljava/lang/String;)V", url, false, false);
+    }
+    fn sign_in_in_browser(&mut self, server: &str) -> bool {
+        // Google in the phone's browser; it comes back to a port of this app.
+        // The page it lands on has a button that returns to Inkboard.
+        let back = "intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.canvasstudio.rust;end".to_string();
+        let events = self.events.clone();
+        canvas_core::ui::cloud::loopback::start(
+            server,
+            Some(back),
+            |url| {
+                self.text_call("openUrl", "(Ljava/lang/String;)V", url, false, false);
+                true
+            },
+            move |result| {
+                let _ = events.send(Event::SignIn(result));
+            },
+        )
+    }
     fn save_png(&mut self, name: &str, png: &[u8]) {
         if let Ok(mut env) = self.vm.attach_current_thread_as_daemon() {
             let _ = env
@@ -150,6 +172,7 @@ enum Event {
     Ink(u32, String),
     Update(Option<(String, String)>, bool, bool),
     Toast(String),
+    SignIn(Result<String, String>),
     Import(Vec<String>),
     File(i32, PickerFile),
     Pause(SyncSender<()>),
@@ -221,6 +244,8 @@ fn drive(mut app: App, rx: Receiver<Event>) {
                     app.update_result(release, failed, manual)
                 }
                 Event::Toast(text) => app.toast(&text),
+                Event::SignIn(Ok(token)) => app.finish_sign_in(&token),
+                Event::SignIn(Err(message)) => app.sign_in_failed(&message),
                 Event::Import(files) => app.import_boards(files),
                 Event::File(token, file) => app.file_result(token, file),
                 Event::Pause(ack) => app.pause(ack),
@@ -273,11 +298,12 @@ pub extern "system" fn Java_com_canvasstudio_rust_RustApp_create(
     let version = string(&mut env, &version);
     let (tx, rx) = mpsc::channel();
     let wake = tx.clone();
+    let events = tx.clone();
     let thread = std::thread::Builder::new()
         .name("rust-app".into())
         .spawn(move || {
             let app = App::new(
-                Box::new(AndroidUi { vm, host }),
+                Box::new(AndroidUi { vm, host, events }),
                 dir,
                 settings,
                 version,

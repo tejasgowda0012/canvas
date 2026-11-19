@@ -1,6 +1,6 @@
 [package]
 name = "inkboard_desktop"
-version = "0.10.0"
+version = "0.10.1"
 edition = "2021"
 description = "Inkboard for macOS, Windows and Linux: the same Rust app as on Android, in a desktop window"
 

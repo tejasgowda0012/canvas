@@ -3,6 +3,8 @@
 //! open, sharing, and live editing with everyone else on a board.
 
 pub mod http;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod loopback;
 pub mod replica;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod room;

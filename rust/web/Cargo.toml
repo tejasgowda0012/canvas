@@ -1,6 +1,6 @@
 [package]
 name = "inkboard_web"
-version = "0.10.0"
+version = "0.10.1"
 edition = "2021"
 description = "Inkboard in a browser: the same Rust app as on Android and desktop, drawn into a canvas"
 

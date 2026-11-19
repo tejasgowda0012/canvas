@@ -68,89 +68,6 @@ fn open_in_browser(url: &str) -> bool {
     r.is_ok()
 }
 
-/// A hard-to-guess value tying the browser's answer to this sign-in.
-fn random_state() -> String {
-    use std::hash::{BuildHasher, Hasher};
-    let mut out = String::new();
-    for i in 0..2u64 {
-        let mut h = std::collections::hash_map::RandomState::new().build_hasher();
-        h.write_u64(i ^ std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos() as u64));
-        out.push_str(&format!("{:016x}", h.finish()));
-    }
-    out
-}
-
-fn percent_decode(s: &str) -> String {
-    let b = s.as_bytes();
-    let mut out = Vec::with_capacity(b.len());
-    let mut i = 0;
-    while i < b.len() {
-        match b[i] {
-            b'+' => out.push(b' '),
-            b'%' if i + 2 < b.len() => {
-                if let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
-                    out.push(v);
-                    i += 2;
-                } else {
-                    out.push(b'%');
-                }
-            }
-            c => out.push(c),
-        }
-        i += 1;
-    }
-    String::from_utf8_lossy(&out).into_owned()
-}
-
-/// Waits (up to 10 minutes) for the browser to come back to
-/// http://127.0.0.1:<port>/callback?token=…&state=… after Google sign-in.
-fn await_browser_sign_in(listener: std::net::TcpListener, state: String) -> Result<String, String> {
-    use std::io::{Read, Write};
-    let _ = listener.set_nonblocking(true);
-    let deadline = Instant::now() + Duration::from_secs(600);
-    while Instant::now() < deadline {
-        let mut stream = match listener.accept() {
-            Ok((s, _)) => s,
-            Err(_) => {
-                std::thread::sleep(Duration::from_millis(100));
-                continue;
-            }
-        };
-        let _ = stream.set_nonblocking(false);
-        let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
-        let mut buf = [0u8; 8192];
-        let n = stream.read(&mut buf).unwrap_or(0);
-        let head = String::from_utf8_lossy(&buf[..n]);
-        let target = head.split_whitespace().nth(1).unwrap_or("");
-        let Some(query) = target.strip_prefix("/callback?") else {
-            let _ = stream.write_all(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
-            continue;
-        };
-        let params: std::collections::HashMap<String, String> =
-            query.split('&').filter_map(|kv| kv.split_once('=')).map(|(k, v)| (k.to_string(), percent_decode(v))).collect();
-        let result = if params.get("state") != Some(&state) {
-            Err("Sign-in didn't start here. Try again.".to_string())
-        } else if let Some(token) = params.get("token").filter(|t| !t.is_empty()) {
-            Ok(token.clone())
-        } else {
-            Err(params.get("error").cloned().unwrap_or_else(|| "Sign-in failed. Try again.".into()))
-        };
-        let (title, line) = match &result {
-            Ok(_) => ("You're signed in", "Go back to Inkboard. You can close this tab."),
-            Err(e) => ("Sign-in didn't work", e.as_str()),
-        };
-        let line: String = line.chars().map(|c| match c { '<' => "&lt;".to_string(), '>' => "&gt;".to_string(), '&' => "&amp;".to_string(), c => c.to_string() }).collect();
-        let body = format!(
-            "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width'><title>Inkboard</title>\
-             <body style='font:18px system-ui;display:grid;place-items:center;height:90vh;background:#f7f6fb;color:#1b1a22'>\
-             <div style='text-align:center'><h1 style='font-size:28px'>{title}</h1><p>{line}</p></div>"
-        );
-        let _ = stream.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes());
-        return result;
-    }
-    Err("Sign-in timed out. Try again.".into())
-}
-
 fn pictures_dir() -> PathBuf {
     dirs::picture_dir().or_else(dirs::home_dir).unwrap_or_else(|| PathBuf::from(".")).join("Inkboard")
 }
@@ -191,24 +108,15 @@ impl Platform for DesktopPlatform {
     }
 
     fn sign_in_in_browser(&mut self, server: &str) -> bool {
-        let Ok(listener) = std::net::TcpListener::bind("127.0.0.1:0") else { return false };
-        let Ok(port) = listener.local_addr().map(|a| a.port()) else { return false };
-        let state = random_state();
-        let url = format!("{}/auth/google?return=app&port={port}&state={state}", server.trim_end_matches('/'));
-        if !open_in_browser(&url) {
-            return false;
-        }
         let events = self.events.clone();
         let proxy = self.proxy.clone();
-        std::thread::spawn(move || {
-            let e = match await_browser_sign_in(listener, state) {
+        canvas_core::ui::cloud::loopback::start(server, None, open_in_browser, move |result| {
+            events.lock().unwrap().push(match result {
                 Ok(token) => HostEvent::SignedIn(token),
                 Err(message) => HostEvent::SignInFailed(message),
-            };
-            events.lock().unwrap().push(e);
+            });
             let _ = proxy.send_event(Wake);
-        });
-        true
+        })
     }
 
     fn open_url(&mut self, url: &str) {

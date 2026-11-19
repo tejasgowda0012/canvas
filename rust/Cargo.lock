@@ -971,7 +971,7 @@ dependencies = [
 
 [[package]]
 name = "inkboard_desktop"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "arboard",
  "canvas_core",
@@ -985,7 +985,7 @@ dependencies = [
 
 [[package]]
 name = "inkboard_web"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "canvas_core",
  "cosmic-text",
