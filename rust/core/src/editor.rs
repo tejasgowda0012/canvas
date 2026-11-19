@@ -107,6 +107,74 @@ impl Smoother {
     }
 }
 
+/// Longest predicted tail, in screen pixels.
+const PREDICT_CAP: f64 = 48.0;
+
+/// Where the pen will probably be after half of `horizon` ms and after all of
+/// it, as offsets from the newest sample in `recent` (screen pixels, ms).
+///
+/// The guess follows an arc at the pen's current turn rate, so a curve is
+/// predicted as a curve rather than a tangent that overshoots it. It is
+/// shortened as the pen slows down or the turn tightens, and dropped at
+/// corners and during slow, careful movement, where a wrong guess would show.
+fn extrapolate(recent: &VecDeque<(Pt, u64)>, horizon: f64) -> Option<[Pt; 2]> {
+    let n = recent.len();
+    if n < 3 || horizon <= 0.0 {
+        return None;
+    }
+    let ((p0, t0), (pm, tm), (p1, t1)) = (recent[0], recent[n / 2], recent[n - 1]);
+    let (d0, d1) = (tm.saturating_sub(t0) as f64, t1.saturating_sub(tm) as f64);
+    if d0 < 2.0 || d1 < 2.0 {
+        return None;
+    }
+    // Velocity (px/ms) over the older and the newer half of the window.
+    let (v0, v1) = ((pm - p0) / d0, (p1 - pm) / d1);
+    let (s0, s1) = (v0.len(), v1.len());
+    if s1 < 0.08 {
+        return None;
+    }
+    // Turn rate (rad/ms) between the two halves.
+    let turn = if s0 < 0.02 { 0.0 } else { (v0.x * v1.y - v0.y * v1.x).atan2(v0.x * v1.x + v0.y * v1.y) };
+    if turn.abs() > 1.0 {
+        return None; // turned more than ~57° within the window: a corner
+    }
+    let omega = turn / ((d0 + d1) / 2.0);
+    // How much of the horizon to trust.
+    let mut trust = 1.0;
+    if s1 < s0 {
+        trust *= s1 / s0; // slowing down, perhaps to stop or turn
+    }
+    let sweep = (omega * horizon).abs();
+    if sweep > std::f64::consts::FRAC_PI_2 {
+        return None; // turning too fast to guess where it goes
+    }
+    trust *= sweep.cos();
+    let horizon = horizon * trust;
+    if horizon < 2.0 {
+        return None;
+    }
+    // v1 is the velocity half-way through the newer half: turn it to now,
+    // then walk the arc.
+    let rotate = |v: Pt, a: f64| Pt::new(v.x * a.cos() - v.y * a.sin(), v.x * a.sin() + v.y * a.cos());
+    let v = rotate(v1, omega * d1 / 2.0);
+    const STEPS: usize = 8;
+    let dt = horizon / STEPS as f64;
+    let mut at = Pt::ZERO;
+    let mut half = Pt::ZERO;
+    for i in 0..STEPS {
+        at = at + rotate(v, omega * dt * (i as f64 + 0.5)) * dt;
+        if i + 1 == STEPS / 2 {
+            half = at;
+        }
+    }
+    let len = at.len();
+    if len > PREDICT_CAP {
+        let k = PREDICT_CAP / len;
+        return Some([half * k, at * k]);
+    }
+    Some([half, at])
+}
+
 /// A second stroke being written at the same time as the main one.
 struct Extra {
     pointer: i32,
@@ -1736,22 +1804,9 @@ impl Editor {
             position = self.raw_screen;
             self.prediction.push(self.world(position));
         }
-        if self.predict_ms > 0.0 && self.recent.len() >= 3 {
-            let (p0, t0) = self.recent[0];
-            let dt = time.saturating_sub(t0) as f64;
-            if dt >= 4.0 {
-                let v = (position - p0) / dt;
-                // Ignore slow, careful movement where a guess would show.
-                if v.len() > 0.08 {
-                    let mut ahead = v * self.predict_ms;
-                    let cap = 48.0;
-                    if ahead.len() > cap {
-                        ahead = ahead * (cap / ahead.len());
-                    }
-                    self.prediction.push(self.world(position + ahead * 0.5));
-                    self.prediction.push(self.world(position + ahead));
-                }
-            }
+        if let Some([half, full]) = extrapolate(&self.recent, self.predict_ms) {
+            self.prediction.push(self.world(position + half));
+            self.prediction.push(self.world(position + full));
         }
         if had || !self.prediction.is_empty() {
             self.overlay_dirty = true;
@@ -2430,5 +2485,62 @@ mod tests {
         assert_eq!((shape.color, shape.width, shape.filled), (0xff123456, 6.0, true));
         assert_eq!(editor.tool(), Tool::Select);
         assert!(editor.doc.is_selected(&shape.id));
+    }
+}
+
+#[cfg(test)]
+mod predict_tests {
+    use super::*;
+
+    fn window(points: impl Iterator<Item = (f64, f64)>) -> VecDeque<(Pt, u64)> {
+        points.enumerate().map(|(i, (x, y))| (Pt::new(x, y), i as u64 * 8)).collect()
+    }
+
+    #[test]
+    fn straight_line_runs_ahead_by_the_horizon() {
+        let w = window((0..6).map(|i| (i as f64 * 4.0, 0.0))); // 0.5 px/ms
+        let [half, full] = extrapolate(&w, 24.0).unwrap();
+        assert!((full.x - 12.0).abs() < 0.01 && full.y.abs() < 0.01, "{full:?}");
+        assert!((half.x - 6.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn a_circle_is_predicted_along_the_circle() {
+        // Steady circle of radius 100 px, 0.05 rad per 8 ms sample.
+        let r = 100.0;
+        let at = |i: usize| (r * (i as f64 * 0.05).cos(), r * (i as f64 * 0.05).sin());
+        let w = window((0..6).map(at));
+        let [_, full] = extrapolate(&w, 24.0).unwrap();
+        let last = Pt::new(at(5).0, at(5).1);
+        let guess = last + full;
+        // Three samples ahead on the true circle (24 ms = 3 samples).
+        let truth = Pt::new(at(8).0, at(8).1);
+        let tangent_only = last + (last - Pt::new(at(4).0, at(4).1)) * 3.0;
+        assert!(guess.dist(truth) < 0.5, "arc guess {guess:?} vs {truth:?}");
+        assert!(guess.dist(truth) < tangent_only.dist(truth) / 3.0);
+    }
+
+    #[test]
+    fn slowing_down_shortens_the_guess() {
+        let xs = [0.0, 8.0, 16.0, 24.0, 28.0, 30.0];
+        let w = window(xs.iter().map(|&x| (x, 0.0)));
+        let [_, full] = extrapolate(&w, 24.0).unwrap();
+        let steady = 0.5 * 24.0; // newer-half speed times the horizon, untrimmed
+        assert!(full.x > 0.0 && full.x < steady * 0.5, "{full:?}");
+    }
+
+    #[test]
+    fn corners_and_slow_strokes_get_no_guess() {
+        let corner = window([(0.0, 0.0), (8.0, 0.0), (16.0, 0.0), (16.0, 8.0), (16.0, 16.0), (16.0, 24.0)].into_iter());
+        assert!(extrapolate(&corner, 24.0).is_none());
+        let slow = window((0..6).map(|i| (i as f64 * 0.4, 0.0)));
+        assert!(extrapolate(&slow, 24.0).is_none());
+    }
+
+    #[test]
+    fn the_tail_is_capped() {
+        let w = window((0..6).map(|i| (i as f64 * 40.0, 0.0)));
+        let [_, full] = extrapolate(&w, 36.0).unwrap();
+        assert!((full.len() - PREDICT_CAP).abs() < 1e-6);
     }
 }
