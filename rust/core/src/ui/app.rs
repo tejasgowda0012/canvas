@@ -568,6 +568,7 @@ enum Act {
     Redo,
     Delete,
     Convert,
+    Refine,
     Bigger,
     Smaller,
     Style,
@@ -2790,6 +2791,7 @@ impl App {
             Act::Redo => self.ed.redo(),
             Act::Delete => self.ed.delete_selection(),
             Act::Convert => self.ed.convert_selection(),
+            Act::Refine => self.ed.refine_selection(),
             Act::EditMath => self.edit_math(),
             Act::Plot => self.ed.plot_selected_formula(),
             Act::GraphRange => {
@@ -3635,7 +3637,7 @@ impl App {
         }
         let text = self.ed.selected_text_count() > 0;
         let inks = self.ed.selected_ink_count() > 0;
-        let count = 2 + if text { 3 } else { 0 } + if inks { 1 } else { 0 };
+        let count = 2 + if text { 3 } else { 0 } + if inks { 2 } else { 0 };
         let actions_width: f32 = self.object_actions().iter().map(|(_, width, _, _)| width + 6.0).sum();
         let selection_width = 16.0 + 78.0 * count as f32 + actions_width;
         let selection_scale = compact.min((w - 2.0 * margin) / selection_width);
@@ -3973,6 +3975,7 @@ impl App {
             let mut items = Vec::with_capacity(5);
             if self.ed.selected_ink_count() > 0 {
                 items.push((Ico::Convert, Act::Convert));
+                items.push((Ico::Refine, Act::Refine));
             }
             if self.ed.selected_text_count() > 0 {
                 items.extend([

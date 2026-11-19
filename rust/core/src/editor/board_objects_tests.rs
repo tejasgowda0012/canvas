@@ -143,3 +143,35 @@ fn mind_map_moves_and_deletes_only_the_selected_branch() {
     editor.redo();
     assert!(!editor.doc.contains(&grandchild.id));
 }
+
+#[test]
+fn refining_handwriting_keeps_it_ink_selected_and_undoable() {
+    let mut editor = Editor::new();
+    editor.resize(960, 640, 1.0);
+    // Three wavy "words" drifting up and down along a line.
+    let word = |id: &str, x0: f64, y0: f64| {
+        let points = (0..60)
+            .map(|i| {
+                let t = i as f64;
+                Pt::new(x0 + t * 1.5, y0 - 20.0 * (t * 0.5).sin().abs())
+            })
+            .collect();
+        Shape::new(id, Tool::Pen, points)
+    };
+    let before = vec![word("a", 100.0, 300.0), word("b", 210.0, 308.0), word("c", 320.0, 293.0)];
+    editor.apply_remote(before.clone(), vec![]);
+    editor.doc.select_many(["a", "b", "c"].map(String::from));
+    editor.refine_selection();
+
+    let bottom = |id: &str| editor.doc.get(id).unwrap().bounds().b;
+    let spread = |b: &[f64]| b.iter().cloned().fold(f64::MIN, f64::max) - b.iter().cloned().fold(f64::MAX, f64::min);
+    assert!(spread(&[bottom("a"), bottom("b"), bottom("c")]) < 4.0);
+    for id in ["a", "b", "c"] {
+        assert_eq!(editor.doc.get(id).unwrap().tool, Tool::Pen);
+        assert!(editor.doc.is_selected(id));
+    }
+    editor.undo();
+    for shape in &before {
+        assert_eq!(editor.doc.get(&shape.id).map(|s| s.points.clone()), Some(shape.points.clone()));
+    }
+}

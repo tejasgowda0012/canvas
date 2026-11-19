@@ -1583,6 +1583,36 @@ impl Editor {
         self.events |= EV_INK;
     }
 
+    /// Tidies the selected handwriting in place: levels each line, settles
+    /// words on one baseline, evens their size, slant and spacing, and calms
+    /// shaky strokes. The ink stays ink, and it is a single undo step.
+    pub fn refine_selection(&mut self) {
+        let shapes: Vec<Arc<Shape>> = self.doc.selected_shapes().into_iter().filter(|s| s.tool == Tool::Pen).collect();
+        if shapes.is_empty() {
+            return;
+        }
+        let strokes: Vec<Vec<Pt>> = shapes.iter().map(|s| s.points.clone()).collect();
+        let refined = crate::refine::refine(&strokes);
+        let mut drop = Vec::new();
+        let mut add = Vec::new();
+        for (shape, points) in shapes.iter().zip(refined) {
+            if points != shape.points {
+                drop.push(shape.id.clone());
+                add.push(shape.with_points(points));
+            }
+        }
+        if add.is_empty() {
+            return;
+        }
+        let selected: Vec<String> = self.doc.selected_shapes().iter().map(|s| s.id.clone()).collect();
+        let applied = self.doc.swap(drop, add);
+        self.on_applied(applied);
+        if self.doc.select_many(selected) {
+            self.events |= EV_STATE;
+            self.overlay_dirty = true;
+        }
+    }
+
     /// Replaces the strokes of an [`InkRequest`] with typed `text`, as one
     /// undo step. Does nothing if any of the strokes has since changed.
     pub fn commit_ink(&mut self, ids: &[String], text: &str) {

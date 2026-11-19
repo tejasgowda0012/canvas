@@ -19,6 +19,7 @@ pub enum Ico {
     Shapes,
     Text,
     Convert,
+    Refine,
     Plus,
     Minus,
     Fit,
@@ -66,7 +67,7 @@ pub enum Ico {
     Exit,
 }
 
-pub const ALL: [Ico; 59] = [
+pub const ALL: [Ico; 60] = [
     Ico::Back,
     Ico::More,
     Ico::Kebab,
@@ -81,6 +82,7 @@ pub const ALL: [Ico; 59] = [
     Ico::Shapes,
     Ico::Text,
     Ico::Convert,
+    Ico::Refine,
     Ico::Plus,
     Ico::Minus,
     Ico::Fit,
@@ -129,7 +131,7 @@ pub const ALL: [Ico; 59] = [
 ];
 
 impl Ico {
-    pub const ALL: [Ico; 59] = ALL;
+    pub const ALL: [Ico; 60] = ALL;
 }
 
 fn outline(path: &mut PathBuilder, pts: &[(f32, f32)]) {
@@ -294,6 +296,15 @@ pub(super) fn paths(ico: Ico) -> (Option<Path>, Option<Path>) {
             push_polyline(&mut stroke, &[(13.0, 5.0), (22.0, 5.0)]);
             push_polyline(&mut stroke, &[(17.5, 5.0), (17.5, 14.0)]);
             four_point_star(&mut fill, 19.0, 20.0, 3.0, 0.9);
+        }
+        Refine => {
+            // A wavy line of writing settling onto a straight baseline.
+            push_polyline(
+                &mut stroke,
+                &[(2.0, 12.0), (4.5, 8.5), (7.0, 12.5), (9.5, 9.0), (12.0, 12.5), (14.5, 9.5), (16.0, 12.0)],
+            );
+            push_polyline(&mut stroke, &[(2.0, 17.0), (16.0, 17.0)]);
+            four_point_star(&mut fill, 19.5, 6.0, 3.0, 0.9);
         }
         Plus | Minus => {
             push_polyline(&mut stroke, &[(5.0, 12.0), (19.0, 12.0)]);

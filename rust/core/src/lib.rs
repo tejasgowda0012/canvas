@@ -12,6 +12,7 @@ pub mod math;
 mod mindmap;
 pub mod import;
 pub mod recognize;
+pub mod refine;
 pub mod render;
 pub mod shape;
 pub mod store;
