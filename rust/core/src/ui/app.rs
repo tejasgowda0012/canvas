@@ -1004,7 +1004,6 @@ enum MenuKind {
 
 #[derive(Clone, Debug)]
 enum AskFor {
-    NewBoard,
     Rename(String),
     RenameTeam(String),
     AddPerson,
@@ -2764,11 +2763,11 @@ impl App {
         match act {
             Act::Open(id) => self.open(id),
             Act::NewBoard => {
+                // The board exists at once; tap its title to rename it.
                 if self.account().is_some() {
-                    // Figma-style: the board exists at once and is renamed later.
                     self.create_team_board("Untitled board".into());
                 } else {
-                    self.ask("New board", "", "Board name", false, AskFor::NewBoard);
+                    self.create_local_board("Untitled board".into());
                 }
             }
             Act::Settings => self.panel(PanelKind::Settings),
@@ -3047,6 +3046,18 @@ impl App {
         self.show_overlay(Overlay::Panel { kind, scroll: 0.0 });
     }
 
+    /// Makes a board on this device and opens it.
+    pub(crate) fn create_local_board(&mut self, title: String) {
+        let id = Self::new_board_id();
+        let updated = self.timestamp();
+        self.send(Job::Create {
+            id,
+            title,
+            updated,
+            extra: Map::new(),
+        });
+    }
+
     fn new_board_id() -> String {
         let salt = (wall_millis() as u64)
             .wrapping_mul(6_364_136_223_846_793_005)
@@ -3080,25 +3091,6 @@ impl App {
                 self.platform.hide_keyboard();
                 let name = text.trim();
                 match purpose {
-                    AskFor::NewBoard => {
-                        let title = if name.is_empty() {
-                            "Untitled board".to_string()
-                        } else {
-                            name.to_string()
-                        };
-                        if self.account().is_some() {
-                            self.create_team_board(title);
-                            return;
-                        }
-                        let id = Self::new_board_id();
-                        let updated = self.timestamp();
-                        self.send(Job::Create {
-                            id,
-                            title,
-                            updated,
-                            extra: Map::new(),
-                        });
-                    }
                     AskFor::RenameTeam(id) => {
                         if !name.is_empty() {
                             self.rename_team(id, name.to_string());
@@ -4273,7 +4265,6 @@ impl App {
                     Some(Act::Field),
                 );
                 let ok = match purpose {
-                    AskFor::NewBoard => "Create",
                     AskFor::Rename(_) | AskFor::RenameTeam(_) => "Save",
                     AskFor::AddPerson => "Invite",
                     AskFor::Text { .. } | AskFor::Cell { .. } | AskFor::Math { .. } => "Done",
@@ -5976,8 +5967,7 @@ mod tests {
     fn pause_saves_a_stroke_without_an_intervening_frame() {
         let (mut app, dir) = app();
         app.resize(1280, 800, 1.0);
-        app.run(Act::NewBoard);
-        app.text_input("Before background", true);
+        app.create_local_board("Before background".into());
         settle(&mut app);
         let mut sample = Sample {
             id: 9,
@@ -6005,8 +5995,7 @@ mod tests {
     fn failed_save_keeps_the_board_open_until_retry_succeeds() {
         let (mut app, dir) = app();
         app.resize(1280, 800, 1.0);
-        app.run(Act::NewBoard);
-        app.text_input("Keep my work", true);
+        app.create_local_board("Keep my work".into());
         settle(&mut app);
         let sample = Sample {
             id: 1,
@@ -6085,8 +6074,7 @@ mod tests {
         assert_eq!(status, 200);
         assert_eq!(state["board"], false);
 
-        app.run(Act::NewBoard);
-        app.text_input("Pad", true);
+        app.create_local_board("Pad".into());
         settle(&mut app);
         // A square pad on a 1280x800 screen: the box is square on screen too.
         let (_, state) = req(&mut app, "POST", "/r/area", &[("k", &key)], json!({"x": 0.1, "y": 0.2, "w": 0.25, "aspect": 1.0}));
@@ -6154,8 +6142,7 @@ mod tests {
         let (mut app, dir) = app();
         app.resize(1280, 800, 1.5);
         settle(&mut app);
-        app.run(Act::NewBoard);
-        app.text_input("Team", true);
+        app.create_local_board("Team".into());
         settle(&mut app);
         assert!(app.is_board_open());
         let key = app.settings.mcp_key.clone();
@@ -6249,8 +6236,7 @@ mod tests {
         settle(&mut app);
         assert!(app.listed);
         // New board, named through the dialog.
-        app.run(Act::NewBoard);
-        app.text_input("Plans", true);
+        app.create_local_board("Plans".into());
         settle(&mut app);
         assert!(app.is_board_open());
         assert_eq!(app.board.as_ref().unwrap().title, "Plans");
@@ -6295,9 +6281,10 @@ mod tests {
         let (mut app, dir) = app();
         app.resize(1920, 1080, 2.0);
         app.run(Act::NewBoard);
-        app.text_input("", true);
         settle(&mut app);
         assert!(app.is_board_open());
+        // No name asked for: it starts as "Untitled board" and is renamed from its title.
+        assert_eq!(app.board.as_ref().unwrap().title, "Untitled board");
         let menu = app.node_rect(&Act::Menu);
         tap(&mut app, menu.cx(), menu.cy(), 3000);
         assert!(matches!(app.overlay, Some(Overlay::Menu { .. })));
@@ -6335,8 +6322,7 @@ mod tests {
     fn dock_moves_to_each_edge_without_covering_canvas_centre() {
         let (mut app, dir) = app();
         app.resize(1920, 1080, 1.5);
-        app.run(Act::NewBoard);
-        app.text_input("Dock positions", true);
+        app.create_local_board("Dock positions".into());
         settle(&mut app);
         let (w, h) = app.extent();
         for dock in Dock::ALL {
@@ -6385,8 +6371,7 @@ mod tests {
     fn pages_save_and_reopen_with_independent_shapes_and_views() {
         let (mut app, dir) = app();
         app.resize(1280, 800, 1.0);
-        app.run(Act::NewBoard);
-        app.text_input("Pages", true);
+        app.create_local_board("Pages".into());
         settle(&mut app);
         let board_id = app.board.as_ref().unwrap().id.clone();
         let shape = |id| Shape::new(id, Tool::Rectangle, vec![Pt::ZERO, Pt::new(100.0, 60.0)]);
@@ -6432,8 +6417,7 @@ mod tests {
     fn highlighter_draws_translucent_ink_and_keeps_its_own_style() {
         let (mut app, dir) = app();
         app.resize(1280, 800, 1.0);
-        app.run(Act::NewBoard);
-        app.text_input("Highlights", true);
+        app.create_local_board("Highlights".into());
         settle(&mut app);
         app.run(Act::Color(PALETTE[8]));
         app.run(Act::Width(2));
@@ -6489,8 +6473,7 @@ mod tests {
     fn text_request_opens_multiline_input_and_commits_opaque_text() {
         let (mut app, dir) = app();
         app.resize(1280, 800, 1.0);
-        app.run(Act::NewBoard);
-        app.text_input("Typing", true);
+        app.create_local_board("Typing".into());
         settle(&mut app);
         app.run(Act::Color(PALETTE[9]));
         app.run(Act::Highlighter);
@@ -6519,8 +6502,7 @@ mod tests {
     fn math_inserts_edits_plots_and_changes_range_through_board_controls() {
         let (mut app, dir) = app();
         app.resize(1280, 800, 1.0);
-        app.run(Act::NewBoard);
-        app.text_input("Math test", true);
+        app.create_local_board("Math test".into());
         settle(&mut app);
         let tap_button = |app: &mut App, act: Act, time| {
             let button = app.node_rect(&act);
@@ -6571,8 +6553,7 @@ mod tests {
     fn insert_dock_imports_and_persists_rendered_pdf_pages() {
         let (mut app, dir) = app();
         app.resize(1280, 800, 1.0);
-        app.run(Act::NewBoard);
-        app.text_input("PDF annotations", true);
+        app.create_local_board("PDF annotations".into());
         settle(&mut app);
         let id = app.board.as_ref().unwrap().id.clone();
         let insert = app.node_rect(&Act::Insert);
@@ -6613,8 +6594,7 @@ mod tests {
     fn table_picker_and_cell_editor_use_the_board_controls() {
         let (mut app, dir) = app();
         app.resize(1280, 800, 1.0);
-        app.run(Act::NewBoard);
-        app.text_input("Table test", true);
+        app.create_local_board("Table test".into());
         settle(&mut app);
         let tap_button = |app: &mut App, act: Act, time| {
             let button = app.node_rect(&act);

@@ -1708,10 +1708,10 @@ mod tests {
         let first = app.new_board_at;
         app.run(Act::NewBoard);
         assert_eq!(app.new_board_at, first);
-        // Signed out, boards on this device are still named first.
+        // Signed out, a board on this device is made at once too.
         let (mut local, dir2) = offline_app(Default::default());
         local.run(Act::NewBoard);
-        assert!(matches!(local.overlay, Some(Overlay::Ask { purpose: AskFor::NewBoard, .. })));
+        assert!(local.overlay.is_none(), "no dialog signed out either");
         let _ = std::fs::remove_dir_all(dir);
         let _ = std::fs::remove_dir_all(dir2);
     }
