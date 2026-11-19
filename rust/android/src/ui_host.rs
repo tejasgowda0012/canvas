@@ -116,7 +116,9 @@ impl Platform for AndroidUi {
     fn sign_in_in_browser(&mut self, server: &str) -> bool {
         // Google in the phone's browser; it comes back to a port of this app.
         // The page it lands on has a button that returns to Inkboard.
-        let back = "intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.canvasstudio.rust;end".to_string();
+        // Must match the BROWSABLE filter in AndroidManifest.xml: browsers won't
+        // open a launcher intent and send people to the Play Store instead.
+        let back = "intent://signed-in#Intent;scheme=inkboard;package=com.canvasstudio.rust;end".to_string();
         let events = self.events.clone();
         canvas_core::ui::cloud::loopback::start(
             server,
