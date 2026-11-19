@@ -784,14 +784,20 @@ impl Editor {
     }
 
     /// The contact erases: a stylus eraser, or a wide touch when set to.
+    /// When several fingers write at once a wide touch is a finger, which
+    /// writes: the IR frame reports fingers and the back nib alike.
     fn erases(&self, c: Contact) -> bool {
-        c.eraser || (self.wide_erases && c.wide())
+        c.eraser || (self.wide_touch_erases() && c.wide())
+    }
+
+    fn wide_touch_erases(&self) -> bool {
+        self.wide_erases && !self.multi_ink
     }
 
     /// The contact is the pen, by width: its tip, or its back nib when wide
     /// touches erase.
     fn pen_sized(&self, c: Contact) -> bool {
-        c.tip() || (self.wide_erases && c.wide())
+        c.tip() || (self.wide_touch_erases() && c.wide())
     }
 
     /// Draws the live stroke `ms` milliseconds ahead of the pen (0 = off).

@@ -465,7 +465,10 @@ impl Settings {
                 .and_then(Value::as_bool)
                 .unwrap_or(false),
             multi_ink: v.get("multiInk").and_then(Value::as_bool).unwrap_or(false),
-            wide_erase: v.get("wideErase").and_then(Value::as_bool).unwrap_or(true),
+            // Fingers writing together and fingers erasing exclude each
+            // other on an IR frame; writing wins.
+            wide_erase: v.get("wideErase").and_then(Value::as_bool).unwrap_or(true)
+                && !v.get("multiInk").and_then(Value::as_bool).unwrap_or(false),
             lang: v
                 .get("lang")
                 .and_then(Value::as_str)
@@ -2946,8 +2949,14 @@ impl App {
                 Opt::Palm => s.palm = !s.palm,
                 Opt::FastInk => s.fast_ink = !s.fast_ink,
                 Opt::PenPriority => s.pen_priority = !s.pen_priority,
-                Opt::MultiInk => s.multi_ink = !s.multi_ink,
-                Opt::WideErase => s.wide_erase = !s.wide_erase,
+                Opt::MultiInk => {
+                    s.multi_ink = !s.multi_ink;
+                    s.wide_erase &= !s.multi_ink;
+                }
+                Opt::WideErase => {
+                    s.wide_erase = !s.wide_erase;
+                    s.multi_ink &= !s.wide_erase;
+                }
                 Opt::Smooth => s.smooth = !s.smooth,
             }),
             Act::FontPanel => self.panel(PanelKind::Fonts),

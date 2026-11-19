@@ -872,6 +872,38 @@ fn several_fingers_write_at_once_in_multi_finger_mode() {
 }
 
 #[test]
+fn several_fingers_write_on_an_ir_frame_even_with_wide_erase_on() {
+    // The IR frame reports a finger 35 wide, the same as the pen's back nib.
+    let finger = Contact { norm: 35.0 / 32767.0, ..Contact::default() };
+    let mut e = editor();
+    e.set_wide_erases(true);
+    e.set_multi_ink(true);
+    e.pointer_down_with(0, p(40., 40.), 0, finger);
+    e.pointer_down_with(1, p(40., 300.), 30, finger);
+    e.pointer_down_with(2, p(500., 300.), 40, finger);
+    for i in 1..=10 {
+        let t = 40 + i * 8;
+        let d = i as f64 * 10.0;
+        e.pointer_move_with(0, p(40. + d, 40.), t, finger);
+        e.pointer_move_with(1, p(40. + d, 300.), t, finger);
+        e.pointer_move_with(2, p(500., 300. + d), t, finger);
+    }
+    e.pointer_up(0, p(140., 40.), 200, false);
+    e.pointer_up(1, p(140., 300.), 210, false);
+    e.pointer_up(2, p(500., 400.), 220, false);
+    assert_eq!(e.doc.shapes().len(), 3);
+
+    // With several-finger writing off, a wide touch still erases.
+    e.set_multi_ink(false);
+    e.pointer_down_with(0, p(90., 30.), 1000, finger);
+    for i in 1..=10 {
+        e.pointer_move_with(0, p(90., 30. + i as f64 * 3.0), 1000 + i * 8, finger);
+    }
+    e.pointer_up(0, p(90., 60.), 1100, false);
+    assert_eq!(e.doc.shapes().len(), 2);
+}
+
+#[test]
 fn prediction_runs_ahead_while_writing_and_leaves_no_trace() {
     let mut e = editor();
     e.set_prediction(24.0);
