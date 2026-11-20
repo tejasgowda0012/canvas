@@ -1,72 +1,114 @@
-# Canvas Studio — native Android app
+<p align="center">
+  <img src="branding/logo.png" alt="Inkboard" width="112">
+</p>
 
-Team boards (live multi-device collaboration on Cloudflare, [`cloud/`](cloud/README.md)) and native macOS/Windows/Linux apps ([`rust/desktop`](rust/README.md#desktop-macos-windows-linux)) are part of the Rust app. The Rust Android port is now in [`rust/`](rust/README.md), with its library, editor controls, menus and dialogs rendered in Rust. Download for macOS, Windows, Android and Linux: **https://whiteboard.kenpathlabs.com**. The Flutter implementation below remains available alongside it.
+<h1 align="center">Inkboard</h1>
 
-Version 2 is a native Flutter implementation. The editor uses Flutter CustomPainter, Canvas, TextPainter and native gestures. No WebView, React runtime, JavaScript editor or tldraw SDK is packaged into this APK.
+<p align="center">
+  A fast, native whiteboard for interactive displays, tablets, desktops and the web.<br>
+  One Rust core, every platform, with live team boards.
+</p>
 
-The fetched tldraw repository at `upstream/tldraw` is retained as a reference for interaction concepts. Its React renderer is not a native Flutter renderer; this is a smaller native implementation, not a full port of the tldraw SDK. The previous WebView prototype source remains in `editor/` for reference and is excluded from the native build.
+<p align="center">
+  <a href="https://whiteboard.kenpathlabs.com"><b>Download</b></a> ·
+  <a href="https://whiteboard.kenpathlabs.com/app"><b>Open in browser</b></a> ·
+  <a href="https://github.com/tejasgowda0012/inkboard/releases"><b>Releases</b></a>
+</p>
 
-## Features and saving
+---
 
-- Pen, rectangle, ellipse, arrow, text and eraser.
-- Select and move shapes, choose colors/line weights/fill, undo/redo.
-- Pan, pinch zoom, fit drawing, optional dot grid.
-- Adaptive toolbars and board grids for phones and tablets.
-- Named boards with thumbnails, rename and delete.
-- **Save button**, autosave after edits, save on app backgrounding, and awaited save before leaving a board. Save failures appear in the editor and prevent leaving through Back until saving succeeds.
-- Atomic JSON file writes to the application's private documents directory, under `native_boards`. Reopening the app restores the library and drawings. Uninstalling or clearing app data removes those files.
-- Native Android PNG sharing (exports the entire drawing).
-- Canvas Studio logo in the library and custom adaptive Android launcher icons.
-- In-app update checks (automatic on library startup and a manual **App updates** button), download progress/cancel, SHA-256 and file-size validation, Android install permission and installer confirmation. Native code also verifies package name, newer version code, and the same signing certificate before installation.
+Inkboard is built for writing by hand on large touch panels in classrooms and meeting rooms. Ink appears with very low latency, palms and resting hands are ignored, and several people can write at the same time. The same app runs on Android (including Android TV panels), macOS, Windows, Linux and in the browser, and team boards keep every device in sync live.
 
-## Writing, recognition and large displays (2.2)
+## Features
 
-- tldraw-style layout: floating tool bar at the bottom, style panel, zoom controls and a Share button.
-- Writing is drawn directly from raw pointer events, with the finished board cached as an image, so a stroke costs the same on a full board as on an empty one. A resting palm is ignored while a stroke is in progress.
-- **Shape recognition:** draw a rough box, circle, line or arrow and hold the pen still for about half a second; it snaps to a clean shape. Undo brings the ink back.
-- **Handwriting to text:** select ink and tap *Convert handwriting to text*, or turn on automatic conversion in the menu. English and Hindi, chosen in the menu. Recognition runs on the device with Google ML Kit; each language model (about 20 MB) is downloaded once, which needs internet and Google Play services.
-- Select several shapes with a drag, move, resize, restyle, delete.
+**Writing**
+- Low-latency ink drawn through a front buffer, with optional stroke prediction and adaptive smoothing.
+- Several fingers or pens can write at once.
+- Palm and resting-hand rejection. On IR touch frames, the reported contact width tells the pen tip, the pen's back nib and a palm apart, with on-screen calibration.
+- **Refine handwriting:** select ink to level lines, align words on a baseline and calm shaky strokes. It stays ink and is one undo step.
+- Handwriting to typed text (English and Hindi, on-device with ML Kit) and automatic tidying of hand-drawn shapes.
 
-## Sharing and Claude
+**Board**
+- Pen, highlighter, eraser, shapes, arrows, selection, move and resize, undo and redo.
+- Tables, mind maps, formulas with auto-calculation, and graphs.
+- Multiple pages per board, a movable toolbar and 36 bundled board fonts.
+- Import images, SVG, PDF, PowerPoint, Word and Excel files. Export as PNG.
 
-Open a board and tap **Share → Start sharing**. The board is uploaded to the collaboration server and kept in sync (about once a second) while it is open.
+**Collaboration**
+- **Team boards:** sign in with Google Workspace and edit the same board from many devices at once, with live cursors, selections, presence and per-shape authorship. Boards stay usable offline and sync on reconnect.
+- Owner, editor and viewer roles, invitations by email, and organisation-wide sharing.
+- **Phone as a writing pad:** write, erase and move the board on a large display from a phone.
+- **Claude connector:** a built-in MCP server lets Claude read the board, add diagrams, text and shapes, and see a picture of the board.
 
-- **Another device:** on the board list tap **Join shared board** and enter the 6-digit code (valid 10 minutes) or paste the invite link.
-- **Claude Code:** run the command shown in the Share panel: `claude mcp add --transport http canvas-studio <MCP URL>`.
-- **Claude Desktop:** add the MCP URL as a custom connector, or open `<server>/pair` on the computer, enter the board code and copy the ready-made config.
+## Platforms
 
-Claude gets five tools: `get_board`, `list_shapes`, `add_shapes`, `update_shape`, `delete_shapes`. Its edits appear on every device viewing the board.
+| Platform | How to get it |
+|---|---|
+| Android and Android TV (API 24+) | APK from [Releases](https://github.com/tejasgowda0012/inkboard/releases) or [the website](https://whiteboard.kenpathlabs.com). Updates in-app. |
+| macOS | Universal `.dmg` |
+| Windows | `.exe` |
+| Linux | Native binary |
+| Web | [whiteboard.kenpathlabs.com/app](https://whiteboard.kenpathlabs.com/app), no install |
 
-Anyone holding the code, invite link or MCP URL can edit that board; there are no accounts. Edits merge per shape, last write wins, so two people changing the same shape at once keep only the later change.
+## Architecture
 
-The server is `server/` (Node 22, SQLite). It also serves the APK downloads and update feed. On the Ubuntu host it runs as the user service `canvas-studio-server` on port 18763 with data in `/home/ubuntu/canvas-studio/data`. Run its tests with `npm ci && node --test test/*.test.mjs`. The app's default server address is set at build time with `--dart-define=COLLAB_SERVER_URL=https://...`.
-
-Undo history and camera position are session-only. No shape rotation, images, or tldraw-file compatibility yet.
-
-## Build on Addypy Ubuntu
-
-Location: `/home/ubuntu/canvas-studio`, accessed with `ssh addypy-ts` over Tailscale.
+The whole app, including the editor, renderer, UI, menus and dialogs, is written once in Rust (`canvas_core`) and hosted by a thin layer on each platform.
 
 ```
-bash build-android.sh
+rust/
+├── core/          canvas_core: editor, ink, recognition, rendering, UI, sync client
+├── android/       JNI host: surface, raw touch input, low-latency present, ML Kit
+├── app-android/   Android project and build script
+├── desktop/       winit + softbuffer host for macOS, Windows and Linux
+└── web/           WebAssembly host drawing into a <canvas>
+cloud/             Team-board backend on Cloudflare (Workers, Durable Objects, D1, R2)
 ```
 
-Flutter 3.50.0 at `/home/ubuntu/tools/flutter`; Android SDK at `/home/ubuntu/Android/sdk`; JDK at `/home/ubuntu/jdk/jdk-21.0.13+9`.
+Each team board is a Cloudflare Durable Object that orders changes, stores the board and relays presence. Every device keeps its own copy, so boards work offline.
 
-The script builds a release-mode universal APK and smaller APKs by ABI. No Node build or tldraw license key is involved. Android API 24+ is required. APKs currently use the host's development signing key for direct installation; Play Store distribution needs your own upload signing configuration.
+More detail: [`rust/README.md`](rust/README.md) for the app and [`cloud/README.md`](cloud/README.md) for the backend.
 
-## Verification
+## Building from source
 
-Flutter analysis and 39 tests pass: geometry/hit testing, undo/redo, shape recognition, handwriting model handling (mocked), pen input and palm rejection, pinch zoom, sharing and joining (mocked server), serialization, file save/reopen/overwrite/delete, native drawing plus save/reopen, phone/tablet layouts, update metadata validation, downgrade filtering, download integrity/cancellation and install-permission sequencing. Android native installer code compiles into the release APK; on-device installer interaction still needs hardware testing. Six server tests cover rooms, merging, board codes and the MCP endpoint. Not yet verified on real hardware: writing latency on the 65" panel and ML Kit recognition quality.
+Requires a stable Rust toolchain.
 
-Public download: https://annotated-remedies-property-binding.trycloudflare.com/canvas-studio-native.apk
+```sh
+cd rust
 
-Temporary Cloudflare tunnel on Ubuntu, served by user services `canvas-studio-server` and `canvas-studio-public-tunnel`. Link depends on the running host/tunnel. The directory exposes APK downloads and their checksums, not the source project.
+# Run the core test suite
+cargo test -p canvas_core
 
-## Publishing future updates
+# Desktop app
+cargo run --release -p inkboard_desktop
 
-Increment both version name and integer build code in `app/pubspec.yaml` (currently `2.2.1+5`). Run the build script, then `python3 publish_native.py` on Ubuntu. The publisher checks the signing certificate against the existing APK, creates an immutable versioned APK, and atomically publishes `update.json` after the downloads are ready. Keep the same application ID and signing key to preserve installed boards. Do not share the signing key.
+# Web app (served by the Worker at /app)
+rustup target add wasm32-unknown-unknown
+web/build.sh
 
-The update feed currently uses the temporary public tunnel above. For durable updates and sharing, use a permanent HTTPS host: set `UPDATE_MANIFEST_URL` and `COLLAB_SERVER_URL` during builds and `PUBLIC_BASE_URL` while publishing to that host. The APK download must use the same HTTPS origin as its feed. A stopped or changed tunnel makes the current feed unreachable; users receive a retry message. The update UI never silently installs an APK.
+# Android APK (needs the Android SDK and NDK)
+bash app-android/build.sh
+```
 
-Editable logo source: `branding/logo.svg`. Native Flutter mark: `app/lib/brand_logo.dart`. Rebuild PNG launcher assets with `python3 branding/generate_icons.py --help`.
+To run the backend locally:
+
+```sh
+cd cloud
+npm ci
+npx wrangler dev
+```
+
+CI builds the desktop apps, the Android APK and the web app, and publishes a GitHub release when the desktop version changes on `main`.
+
+## Repository layout
+
+| Path | Contents |
+|---|---|
+| `rust/` | The Inkboard app (current) |
+| `cloud/` | Team-board backend and website |
+| `branding/` | Logo sources and icon generator |
+| `app/`, `server/` | Earlier Flutter app and Node sharing server, kept for reference |
+
+## Branches
+
+- `main` is the released app.
+- `dev` is where new work is built and tested before it is merged into `main`.

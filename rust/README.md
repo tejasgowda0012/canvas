@@ -1,4 +1,4 @@
-# Inkboard 0.6.0 (Rust)
+# Inkboard app (Rust)
 
 The library screen, floating editor toolbars, style panel, menus, dialogs, text/icon drawing and TV remote focus are rendered by Rust. Their layout follows the Flutter app: menu/undo at top left, styles at top right, zoom at bottom left, tools at bottom centre. There are no Kotlin screen or toolbar implementations. A small Android host supplies the Surface, raw input, IME, complex-script text rasterisation, ML Kit and system installation APIs.
 
@@ -89,10 +89,8 @@ The script cross-compiles four Android ABIs and signs/packages `out/canvas-studi
 
 ## Validation
 
-48 Rust tests pass, including font clipping, UI navigation, saved-board reopen, backgrounding during a stroke, and disk-write failure recovery. The signed release APK was installed and launched on a 1920×1080 Android TV emulator; the library, editor, drawing, menu and Hindi labels were visually checked. The host has no KVM acceleration. A 400 ms emulator stroke reported approximately 69 ms mean sample-to-present time; this is a software-emulator observation, not a latency measurement of the BIGVUE panel. Real-panel latency and ML Kit recognition quality still require testing on that device.
+`cargo test -p canvas_core` runs the core suite (about 160 tests): ink input, palm rejection and multi-finger writing, shape and handwriting refinement, rendering against full repaints, saving and reopening boards, and the UI. Team-board sync is tested end to end against `wrangler dev` in CI.
 
 ## Download
 
-Cloudflare: https://annotated-remedies-property-binding.trycloudflare.com/canvas-studio-rust.apk
-
-This is a temporary tunnel. The Rust updater uses GitHub releases tagged `rust-v*`. Publication of `rust-v0.5.0` is pending: GitHub returned HTTP 403 for the supplied token, so a token with Contents write access is required to finish that upload.
+Releases are published on [GitHub](https://github.com/tejasgowda0012/inkboard/releases) and linked from https://whiteboard.kenpathlabs.com. Installed apps check for updates themselves.
