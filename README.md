@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="branding/logo.png" alt="Inkboard" width="112">
+  <img src="branding/mark.svg" alt="Inkboard" width="96">
 </p>
 
 <h1 align="center">Inkboard</h1>
